@@ -1,0 +1,6 @@
+SecureShare.exe
+integration_test.exe
+data/accounts.txt
+data/history.txt
+received/*
+!received/.gitkeep
