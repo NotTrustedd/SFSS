@@ -26,8 +26,12 @@ void transferAll(SOCKET socket, char* data, std::size_t size, bool sending) {
         const int result = sending
             ? send(socket, data + offset, amount, 0)
             : recv(socket, data + offset, amount, 0);
-        if (result == SOCKET_ERROR || result == 0) {
+        if (result == SOCKET_ERROR) {
             throw std::runtime_error(socketError(sending ? "send" : "receive"));
+        }
+        if (result == 0) {
+            throw std::runtime_error(std::string("Peer closed the connection while ") +
+                                     (sending ? "sending." : "receiving."));
         }
         offset += static_cast<std::size_t>(result);
     }

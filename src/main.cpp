@@ -6,6 +6,8 @@
 #include "transfer/HistoryManager.h"
 #include "transfer/TransferManager.h"
 #include <commdlg.h>
+#include <commctrl.h>
+#include <cstring>
 #include <memory>
 #include <process.h>
 #include <sstream>
@@ -38,6 +40,14 @@ const int ID_SEARCH_BUTTON = 1021;
 const int ID_PEER_CHECK = 1022;
 const int ID_CANCEL = 1023;
 
+const COLORREF APP_BACKGROUND = RGB(245, 247, 250);
+const COLORREF APP_SURFACE = RGB(255, 255, 255);
+const COLORREF APP_NAVY = RGB(31, 48, 72);
+const COLORREF APP_TEXT = RGB(48, 60, 76);
+const COLORREF APP_MUTED = RGB(110, 122, 139);
+const COLORREF APP_ACCENT = RGB(30, 116, 128);
+const COLORREF APP_BORDER = RGB(222, 228, 235);
+
 struct AppState {
     Authentication auth;
     HistoryManager history;
@@ -46,16 +56,27 @@ struct AppState {
     std::string currentUser;
     HWND hwnd;
     HWND username;
+    HWND usernameLabel;
     HWND password;
+    HWND passwordLabel;
     HWND listenPort;
+    HWND listenPortLabel;
     HWND receiver;
+    HWND receiverLabel;
     HWND address;
+    HWND addressLabel;
     HWND peerPort;
+    HWND peerPortLabel;
     HWND filePath;
+    HWND filePathLabel;
     HWND sessionKey;
+    HWND sessionKeyLabel;
     HWND searchUser;
     HWND status;
+    HWND accountSummary;
+    HWND transferHint;
     HWND log;
+    HWND progress;
     HWND loginButton;
     HWND registerButton;
     HWND sendButton;
@@ -73,9 +94,12 @@ struct AppState {
 
     AppState()
         : auth("data\\accounts.txt"), history("data\\history.txt"), hwnd(NULL),
-          username(NULL), password(NULL), listenPort(NULL), receiver(NULL),
-          address(NULL), peerPort(NULL), filePath(NULL), sessionKey(NULL),
-          searchUser(NULL), status(NULL), log(NULL), loginButton(NULL),
+          username(NULL), usernameLabel(NULL), password(NULL), passwordLabel(NULL),
+          listenPort(NULL), listenPortLabel(NULL), receiver(NULL), receiverLabel(NULL),
+          address(NULL), addressLabel(NULL), peerPort(NULL), peerPortLabel(NULL),
+          filePath(NULL), filePathLabel(NULL), sessionKey(NULL), sessionKeyLabel(NULL),
+          searchUser(NULL), status(NULL), accountSummary(NULL), transferHint(NULL),
+          log(NULL), progress(NULL), loginButton(NULL),
           registerButton(NULL), sendButton(NULL), pendingButton(NULL),
           historyButton(NULL), logoutButton(NULL), browseButton(NULL),
           searchButton(NULL), peerCheckButton(NULL), cancelButton(NULL),
@@ -103,6 +127,11 @@ struct OperationResult {
 };
 
 AppState* g_app = NULL;
+HFONT g_font = NULL;
+HFONT g_headingFont = NULL;
+HFONT g_titleFont = NULL;
+HBRUSH g_backgroundBrush = NULL;
+HBRUSH g_surfaceBrush = NULL;
 
 std::string getText(HWND control) {
     const int length = GetWindowTextLengthA(control);
@@ -148,6 +177,63 @@ void setStatus(const std::string& text) {
     }
 }
 
+void setProgress(unsigned int percent) {
+    if (g_app != NULL && g_app->progress != NULL) {
+        SendMessageA(g_app->progress, PBM_SETPOS,
+                     static_cast<WPARAM>(percent > 100 ? 100 : percent), 0);
+    }
+}
+
+void drawText(HDC dc, const char* text, int left, int top, int right, int bottom,
+              COLORREF color, HFONT font) {
+    RECT rect = {left, top, right, bottom};
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, color);
+    HGDIOBJ oldFont = SelectObject(dc, font);
+    DrawTextA(dc, text, -1, &rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    SelectObject(dc, oldFont);
+}
+
+void drawCard(HDC dc, int left, int top, int right, int bottom) {
+    RECT rect = {left, top, right, bottom};
+    HPEN pen = CreatePen(PS_SOLID, 1, APP_BORDER);
+    HGDIOBJ oldPen = SelectObject(dc, pen);
+    HGDIOBJ oldBrush = SelectObject(dc, g_surfaceBrush);
+    Rectangle(dc, rect.left, rect.top, rect.right, rect.bottom);
+    SelectObject(dc, oldBrush);
+    SelectObject(dc, oldPen);
+    DeleteObject(pen);
+}
+
+void paintWindow(HWND hwnd) {
+    PAINTSTRUCT paint;
+    HDC dc = BeginPaint(hwnd, &paint);
+    RECT client;
+    GetClientRect(hwnd, &client);
+    FillRect(dc, &client, g_backgroundBrush);
+
+    RECT header = {0, 0, client.right, 94};
+    HBRUSH headerBrush = CreateSolidBrush(APP_NAVY);
+    FillRect(dc, &header, headerBrush);
+    DeleteObject(headerBrush);
+    drawCard(dc, 24, 112, 338, 403);
+    drawCard(dc, 354, 112, client.right - 24, 403);
+    drawCard(dc, 24, 419, client.right - 24, client.bottom - 20);
+    drawText(dc, "SECURE SHARE", 32, 18, 470, 52, APP_SURFACE, g_titleFont);
+    drawText(dc, "Direct file sharing between trusted peers on your local network",
+             34, 54, client.right - 32, 80, RGB(219, 228, 238), g_font);
+    drawText(dc, "ACCOUNT", 48, 127, 310, 156, APP_NAVY, g_headingFont);
+    drawText(dc, "TRANSFER", 378, 127, 760, 156, APP_NAVY, g_headingFont);
+    drawText(dc, "STATUS AND HISTORY", 48, 434, 500, 462, APP_NAVY, g_headingFont);
+    drawText(dc, g_app->auth.isLoggedIn()
+                 ? "SEARCH HISTORY BY USERNAME"
+                 : "SIGN IN TO VIEW HISTORY",
+             48, 513, 400, 535, APP_MUTED, g_font);
+    drawText(dc, "RECENT ACTIVITY", 48, 574, 300, 596,
+             APP_MUTED, g_font);
+    EndPaint(hwnd, &paint);
+}
+
 void setOperationButtons(bool enabled) {
     EnableWindow(g_app->sendButton, enabled);
     EnableWindow(g_app->pendingButton, enabled);
@@ -160,11 +246,22 @@ void setOperationButtons(bool enabled) {
 }
 
 void setAuthenticatedUi(bool loggedIn) {
+    ShowWindow(g_app->usernameLabel, loggedIn ? SW_HIDE : SW_SHOW);
+    ShowWindow(g_app->username, loggedIn ? SW_HIDE : SW_SHOW);
+    ShowWindow(g_app->passwordLabel, loggedIn ? SW_HIDE : SW_SHOW);
+    ShowWindow(g_app->password, loggedIn ? SW_HIDE : SW_SHOW);
+    ShowWindow(g_app->listenPortLabel, loggedIn ? SW_HIDE : SW_SHOW);
+    ShowWindow(g_app->listenPort, loggedIn ? SW_HIDE : SW_SHOW);
     ShowWindow(g_app->receiver, loggedIn ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_app->receiverLabel, loggedIn ? SW_SHOW : SW_HIDE);
     ShowWindow(g_app->address, loggedIn ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_app->addressLabel, loggedIn ? SW_SHOW : SW_HIDE);
     ShowWindow(g_app->peerPort, loggedIn ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_app->peerPortLabel, loggedIn ? SW_SHOW : SW_HIDE);
     ShowWindow(g_app->filePath, loggedIn ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_app->filePathLabel, loggedIn ? SW_SHOW : SW_HIDE);
     ShowWindow(g_app->sessionKey, loggedIn ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_app->sessionKeyLabel, loggedIn ? SW_SHOW : SW_HIDE);
     ShowWindow(g_app->browseButton, loggedIn ? SW_SHOW : SW_HIDE);
     ShowWindow(g_app->sendButton, loggedIn ? SW_SHOW : SW_HIDE);
     ShowWindow(g_app->pendingButton, loggedIn ? SW_SHOW : SW_HIDE);
@@ -173,89 +270,116 @@ void setAuthenticatedUi(bool loggedIn) {
     ShowWindow(g_app->searchUser, loggedIn ? SW_SHOW : SW_HIDE);
     ShowWindow(g_app->searchButton, loggedIn ? SW_SHOW : SW_HIDE);
     ShowWindow(g_app->peerCheckButton, loggedIn ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_app->transferHint, loggedIn ? SW_HIDE : SW_SHOW);
     if (!loggedIn) {
         ShowWindow(g_app->cancelButton, SW_HIDE);
         EnableWindow(g_app->cancelButton, FALSE);
     }
 
-    EnableWindow(g_app->username, !loggedIn);
-    EnableWindow(g_app->password, !loggedIn);
-    EnableWindow(g_app->listenPort, !loggedIn);
-    EnableWindow(g_app->loginButton, !loggedIn);
-    EnableWindow(g_app->registerButton, !loggedIn);
+    ShowWindow(g_app->loginButton, loggedIn ? SW_HIDE : SW_SHOW);
+    ShowWindow(g_app->registerButton, loggedIn ? SW_HIDE : SW_SHOW);
+    ShowWindow(g_app->accountSummary, loggedIn ? SW_SHOW : SW_HIDE);
+    EnableWindow(g_app->logoutButton, loggedIn);
     if (loggedIn) {
         setOperationButtons(true);
     }
+    InvalidateRect(g_app->hwnd, NULL, TRUE);
 }
 
 HWND addControl(HWND parent, const char* type, const char* text, DWORD style,
-                int x, int y, int width, int height, int id) {
-    return CreateWindowExA(0, type, text, WS_CHILD | WS_VISIBLE | style,
-                           x, y, width, height, parent,
-                           id == 0 ? NULL : reinterpret_cast<HMENU>(id),
-                           GetModuleHandle(NULL), NULL);
+                int x, int y, int width, int height, int id,
+                DWORD extendedStyle = 0) {
+    HWND control = CreateWindowExA(extendedStyle, type, text,
+        WS_CHILD | WS_VISIBLE | style, x, y, width, height, parent,
+        id == 0 ? NULL : reinterpret_cast<HMENU>(id),
+        GetModuleHandle(NULL), NULL);
+    if (control != NULL) {
+        SendMessageA(control, WM_SETFONT, reinterpret_cast<WPARAM>(g_font), TRUE);
+    }
+    return control;
 }
 
 void createControls(HWND hwnd) {
-    addControl(hwnd, "STATIC", "Account", SS_LEFT, 20, 15, 100, 22, 0);
-    addControl(hwnd, "STATIC", "Username", SS_LEFT, 20, 47, 70, 22, 0);
-    g_app->username = addControl(hwnd, "EDIT", "", WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL,
-                                 95, 44, 190, 25, ID_USERNAME);
-    addControl(hwnd, "STATIC", "Password", SS_LEFT, 20, 79, 70, 22, 0);
-    g_app->password = addControl(hwnd, "EDIT", "", WS_TABSTOP | WS_BORDER | ES_PASSWORD | ES_AUTOHSCROLL,
-                                 95, 76, 190, 25, ID_PASSWORD);
-    addControl(hwnd, "STATIC", "Listen port", SS_LEFT, 315, 47, 75, 22, 0);
-    g_app->listenPort = addControl(hwnd, "EDIT", "54000", WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL,
-                                   395, 44, 90, 25, ID_PORT);
-    g_app->loginButton = addControl(hwnd, "BUTTON", "Login", WS_TABSTOP | BS_PUSHBUTTON,
-                                    95, 111, 90, 30, ID_LOGIN);
-    g_app->registerButton = addControl(hwnd, "BUTTON", "Register", WS_TABSTOP | BS_PUSHBUTTON,
-                                       195, 111, 90, 30, ID_REGISTER);
+    g_app->usernameLabel = addControl(hwnd, "STATIC", "Username", SS_LEFT,
+                                      48, 173, 260, 20, 0);
+    g_app->username = addControl(hwnd, "EDIT", "",
+        WS_TABSTOP | ES_AUTOHSCROLL, 48, 195, 260, 29,
+        ID_USERNAME, WS_EX_CLIENTEDGE);
+    g_app->passwordLabel = addControl(hwnd, "STATIC", "Password", SS_LEFT,
+                                      48, 235, 260, 20, 0);
+    g_app->password = addControl(hwnd, "EDIT", "",
+        WS_TABSTOP | ES_PASSWORD | ES_AUTOHSCROLL, 48, 257, 260, 29,
+        ID_PASSWORD, WS_EX_CLIENTEDGE);
+    g_app->listenPortLabel = addControl(hwnd, "STATIC", "Listen port", SS_LEFT,
+                                        48, 297, 100, 20, 0);
+    g_app->listenPort = addControl(hwnd, "EDIT", "54000",
+        WS_TABSTOP | ES_AUTOHSCROLL, 48, 319, 82, 29,
+        ID_PORT, WS_EX_CLIENTEDGE);
+    g_app->loginButton = addControl(hwnd, "BUTTON", "Login",
+        WS_TABSTOP | BS_PUSHBUTTON, 140, 319, 78, 29, ID_LOGIN);
+    g_app->registerButton = addControl(hwnd, "BUTTON", "Register",
+        WS_TABSTOP | BS_PUSHBUTTON, 226, 319, 82, 29, ID_REGISTER);
+    g_app->accountSummary = addControl(hwnd, "STATIC", "",
+        SS_LEFT | SS_NOPREFIX, 48, 194, 260, 70, 0);
+    g_app->logoutButton = addControl(hwnd, "BUTTON", "Logout",
+        WS_TABSTOP | BS_PUSHBUTTON, 48, 319, 90, 29, ID_LOGOUT);
 
-    addControl(hwnd, "STATIC", "Send a file", SS_LEFT, 20, 164, 120, 22, 0);
-    addControl(hwnd, "STATIC", "Receiver", SS_LEFT, 20, 196, 70, 22, 0);
-    g_app->receiver = addControl(hwnd, "EDIT", "", WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL,
-                                 95, 193, 190, 25, ID_RECEIVER);
-    addControl(hwnd, "STATIC", "Peer IP", SS_LEFT, 315, 196, 70, 22, 0);
-    g_app->address = addControl(hwnd, "EDIT", "", WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL,
-                                385, 193, 190, 25, ID_ADDRESS);
-    addControl(hwnd, "STATIC", "Peer port", SS_LEFT, 20, 228, 70, 22, 0);
-    g_app->peerPort = addControl(hwnd, "EDIT", "", WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL,
-                                 95, 225, 90, 25, ID_PEER_PORT);
-    addControl(hwnd, "STATIC", "File", SS_LEFT, 20, 260, 70, 22, 0);
-    g_app->filePath = addControl(hwnd, "EDIT", "", WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL,
-                                 95, 257, 420, 25, ID_FILE_PATH);
-    g_app->browseButton = addControl(hwnd, "BUTTON", "Browse...", WS_TABSTOP | BS_PUSHBUTTON,
-                                     525, 255, 90, 29, ID_BROWSE);
-    addControl(hwnd, "STATIC", "Shared key", SS_LEFT, 20, 292, 70, 22, 0);
-    g_app->sessionKey = addControl(hwnd, "EDIT", "", WS_TABSTOP | WS_BORDER | ES_PASSWORD | ES_AUTOHSCROLL,
-                                   95, 289, 220, 25, ID_SESSION_KEY);
+    g_app->receiverLabel = addControl(hwnd, "STATIC", "Receiver username",
+                                      SS_LEFT, 378, 173, 250, 20, 0);
+    g_app->receiver = addControl(hwnd, "EDIT", "",
+        WS_TABSTOP | ES_AUTOHSCROLL, 378, 195, 240, 29,
+        ID_RECEIVER, WS_EX_CLIENTEDGE);
+    g_app->addressLabel = addControl(hwnd, "STATIC", "Peer IPv4 address",
+                                     SS_LEFT, 640, 173, 300, 20, 0);
+    g_app->address = addControl(hwnd, "EDIT", "",
+        WS_TABSTOP | ES_AUTOHSCROLL, 640, 195, 300, 29,
+        ID_ADDRESS, WS_EX_CLIENTEDGE);
+    g_app->peerPortLabel = addControl(hwnd, "STATIC", "Listening port",
+                                      SS_LEFT, 378, 235, 120, 20, 0);
+    g_app->peerPort = addControl(hwnd, "EDIT", "",
+        WS_TABSTOP | ES_AUTOHSCROLL, 378, 257, 90, 29,
+        ID_PEER_PORT, WS_EX_CLIENTEDGE);
+    g_app->sessionKeyLabel = addControl(hwnd, "STATIC", "Shared session key",
+                                        SS_LEFT, 490, 235, 220, 20, 0);
+    g_app->sessionKey = addControl(hwnd, "EDIT", "",
+        WS_TABSTOP | ES_PASSWORD | ES_AUTOHSCROLL, 490, 257, 220, 29,
+        ID_SESSION_KEY, WS_EX_CLIENTEDGE);
+    g_app->filePathLabel = addControl(hwnd, "STATIC", "File to send",
+                                      SS_LEFT, 378, 297, 440, 20, 0);
+    g_app->filePath = addControl(hwnd, "EDIT", "",
+        WS_TABSTOP | ES_AUTOHSCROLL, 378, 319, 450, 29,
+        ID_FILE_PATH, WS_EX_CLIENTEDGE);
+    g_app->browseButton = addControl(hwnd, "BUTTON", "Browse...",
+        WS_TABSTOP | BS_PUSHBUTTON, 842, 319, 98, 29, ID_BROWSE);
 
-    g_app->sendButton = addControl(hwnd, "BUTTON", "Send file", WS_TABSTOP | BS_PUSHBUTTON,
-                                   95, 326, 100, 31, ID_SEND);
-    g_app->pendingButton = addControl(hwnd, "BUTTON", "Review requests", WS_TABSTOP | BS_PUSHBUTTON,
-                                      205, 326, 125, 31, ID_PENDING);
-    g_app->peerCheckButton = addControl(hwnd, "BUTTON", "Check peer", WS_TABSTOP | BS_PUSHBUTTON,
-                                        340, 326, 100, 31, ID_PEER_CHECK);
-    g_app->historyButton = addControl(hwnd, "BUTTON", "History", WS_TABSTOP | BS_PUSHBUTTON,
-                                      450, 326, 80, 31, ID_HISTORY);
-    g_app->logoutButton = addControl(hwnd, "BUTTON", "Logout", WS_TABSTOP | BS_PUSHBUTTON,
-                                     540, 326, 75, 31, ID_LOGOUT);
-
-    addControl(hwnd, "STATIC", "Search history for username", SS_LEFT, 20, 373, 190, 22, 0);
-    g_app->searchUser = addControl(hwnd, "EDIT", "", WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL,
-                                   210, 370, 190, 25, ID_SEARCH);
-    g_app->searchButton = addControl(hwnd, "BUTTON", "Search", WS_TABSTOP | BS_PUSHBUTTON,
-                                     410, 368, 80, 29, ID_SEARCH_BUTTON);
+    g_app->sendButton = addControl(hwnd, "BUTTON", "Send file",
+        WS_TABSTOP | BS_PUSHBUTTON, 378, 357, 112, 30, ID_SEND);
+    g_app->pendingButton = addControl(hwnd, "BUTTON", "Incoming requests",
+        WS_TABSTOP | BS_PUSHBUTTON, 500, 357, 140, 30, ID_PENDING);
+    g_app->peerCheckButton = addControl(hwnd, "BUTTON", "Check peer",
+        WS_TABSTOP | BS_PUSHBUTTON, 650, 357, 100, 30, ID_PEER_CHECK);
+    g_app->transferHint = addControl(hwnd, "STATIC",
+        "Sign in to configure a peer and send or receive files.",
+        SS_LEFT | SS_NOPREFIX, 378, 242, 500, 50, 0);
+    g_app->historyButton = addControl(hwnd, "BUTTON", "All history",
+        WS_TABSTOP | BS_PUSHBUTTON, 414, 538, 100, 28, ID_HISTORY);
+    g_app->searchUser = addControl(hwnd, "EDIT", "",
+        WS_TABSTOP | ES_AUTOHSCROLL, 48, 538, 250, 28,
+        ID_SEARCH, WS_EX_CLIENTEDGE);
+    g_app->searchButton = addControl(hwnd, "BUTTON", "Search",
+        WS_TABSTOP | BS_PUSHBUTTON, 308, 538, 92, 28, ID_SEARCH_BUTTON);
     g_app->cancelButton = addControl(hwnd, "BUTTON", "Cancel transfer",
-                                     WS_TABSTOP | BS_PUSHBUTTON,
-                                     500, 368, 115, 29, ID_CANCEL);
-
-    addControl(hwnd, "STATIC", "Status", SS_LEFT, 20, 418, 70, 22, 0);
-    g_app->status = addControl(hwnd, "STATIC", "Offline", SS_LEFT, 95, 418, 500, 22, 0);
-    addControl(hwnd, "STATIC", "Activity", SS_LEFT, 20, 450, 100, 22, 0);
-    g_app->log = addControl(hwnd, "LISTBOX", "", WS_VSCROLL | WS_BORDER | LBS_HASSTRINGS,
-                            20, 475, 600, 170, 0);
+        WS_TABSTOP | BS_PUSHBUTTON, 528, 538, 130, 28, ID_CANCEL);
+    g_app->status = addControl(hwnd, "STATIC", "Offline",
+        SS_LEFT | SS_NOPREFIX, 48, 465, 892, 22, 0);
+    g_app->progress = addControl(hwnd, PROGRESS_CLASSA, "",
+        PBS_SMOOTH, 48, 490, 892, 12, 0);
+    SendMessageA(g_app->progress, PBM_SETRANGE32, 0, 100);
+    SendMessageA(g_app->progress, PBM_SETBKCOLOR, 0, APP_BORDER);
+    SendMessageA(g_app->progress, PBM_SETBARCOLOR, 0, APP_ACCENT);
+    g_app->log = addControl(hwnd, "LISTBOX", "",
+        WS_VSCROLL | LBS_HASSTRINGS | LBS_NOINTEGRALHEIGHT,
+        48, 598, 892, 76, 0, WS_EX_CLIENTEDGE);
     setAuthenticatedUi(false);
 }
 
@@ -269,6 +393,7 @@ void finishWorker(OperationResult* result) {
     setOperationButtons(true);
     appendLog(result->message);
     setStatus(result->message);
+    setProgress(result->success ? 100 : 0);
     if (!result->success) {
         showError("Operation failed", result->message);
     } else {
@@ -328,6 +453,7 @@ bool startOperation(WorkerArgs* args) {
     }
     g_app->operationRunning = true;
     InterlockedExchange(&g_app->cancelRequested, 0);
+    setProgress(0);
     args->cancelRequested = &g_app->cancelRequested;
     setOperationButtons(false);
     setStatus(args->incoming ? "Receiving transfer..." : "Waiting for receiver...");
@@ -368,6 +494,9 @@ void handleLogin() {
         g_app->server.start(port, username);
         g_app->currentUser = username;
         g_app->transfers.reset(new TransferManager(g_app->server, g_app->history));
+        SetWindowTextA(g_app->accountSummary,
+            ("Signed in as " + username + "\r\nListening on TCP port " +
+             std::to_string(port) + ".").c_str());
         setAuthenticatedUi(true);
         setStatus("Online as " + username + " on TCP port " + std::to_string(port) + ".");
         appendLog("Logged in as " + username + ".");
@@ -513,7 +642,9 @@ void handleLogout() {
     g_app->transfers.reset();
     g_app->currentUser.clear();
     setAuthenticatedUi(false);
+    SetWindowTextA(g_app->accountSummary, "");
     setStatus("Offline");
+    setProgress(0);
     appendLog("Logged out; listener stopped.");
 }
 
@@ -522,6 +653,26 @@ void handleCancel() {
         InterlockedExchange(&g_app->cancelRequested, 1);
         setStatus("Cancelling transfer...");
         appendLog("Cancellation requested.");
+    }
+}
+
+void setWorkingDirectoryToExecutable() {
+    char executablePath[MAX_PATH] = {};
+    const DWORD length = GetModuleFileNameA(NULL, executablePath, MAX_PATH);
+    if (length == 0 || length >= MAX_PATH) {
+        throw std::runtime_error("Could not locate the application folder.");
+    }
+
+    char* separator = std::strrchr(executablePath, '\\');
+    if (separator == NULL) {
+        separator = std::strrchr(executablePath, '/');
+    }
+    if (separator == NULL) {
+        throw std::runtime_error("Could not determine the application folder.");
+    }
+    *separator = '\0';
+    if (!SetCurrentDirectoryA(executablePath)) {
+        throw std::runtime_error("Could not open the application folder.");
     }
 }
 
@@ -551,6 +702,7 @@ LRESULT CALLBACK windowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
         const std::string messageText = "Transfer progress: " +
             std::to_string(static_cast<unsigned int>(wParam)) + "%";
         setStatus(messageText);
+        setProgress(static_cast<unsigned int>(wParam));
         return 0;
     }
     case WM_APP_OPERATION_DONE:
@@ -559,8 +711,8 @@ LRESULT CALLBACK windowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
     case WM_CLOSE:
         if (g_app->operationRunning) {
             g_app->closing = true;
-            EnableWindow(g_app->hwnd, FALSE);
-            setStatus("Closing after the active transfer finishes...");
+            InterlockedExchange(&g_app->cancelRequested, 1);
+            setStatus("Cancelling transfer before closing...");
             return 0;
         }
         if (g_app->server.isRunning()) {
@@ -569,6 +721,29 @@ LRESULT CALLBACK windowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
         g_app->auth.logout();
         DestroyWindow(hwnd);
         return 0;
+    case WM_PAINT:
+        paintWindow(hwnd);
+        return 0;
+    case WM_ERASEBKGND:
+        return 1;
+    case WM_CTLCOLOREDIT: {
+        HDC dc = reinterpret_cast<HDC>(wParam);
+        SetTextColor(dc, APP_TEXT);
+        SetBkColor(dc, APP_SURFACE);
+        return reinterpret_cast<LRESULT>(g_surfaceBrush);
+    }
+    case WM_CTLCOLORLISTBOX: {
+        HDC dc = reinterpret_cast<HDC>(wParam);
+        SetTextColor(dc, APP_TEXT);
+        SetBkColor(dc, APP_SURFACE);
+        return reinterpret_cast<LRESULT>(g_surfaceBrush);
+    }
+    case WM_CTLCOLORSTATIC: {
+        HDC dc = reinterpret_cast<HDC>(wParam);
+        SetTextColor(dc, APP_MUTED);
+        SetBkColor(dc, APP_SURFACE);
+        return reinterpret_cast<LRESULT>(g_surfaceBrush);
+    }
     case WM_DESTROY:
         PostQuitMessage(0);
         return 0;
@@ -580,7 +755,30 @@ LRESULT CALLBACK windowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int showCommand) {
     try {
+        setWorkingDirectoryToExecutable();
         WinsockRuntime winsock;
+        INITCOMMONCONTROLSEX controls = {};
+        controls.dwSize = sizeof(controls);
+        controls.dwICC = ICC_PROGRESS_CLASS;
+        if (!InitCommonControlsEx(&controls)) {
+            throw std::runtime_error("Could not initialize Windows progress controls.");
+        }
+
+        g_font = CreateFontA(-15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+            CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "Segoe UI");
+        g_headingFont = CreateFontA(-17, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+            CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "Segoe UI");
+        g_titleFont = CreateFontA(-27, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+            CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "Segoe UI");
+        g_backgroundBrush = CreateSolidBrush(APP_BACKGROUND);
+        g_surfaceBrush = CreateSolidBrush(APP_SURFACE);
+        if (g_font == NULL || g_headingFont == NULL || g_titleFont == NULL ||
+            g_backgroundBrush == NULL || g_surfaceBrush == NULL) {
+            throw std::runtime_error("Could not initialize the application appearance.");
+        }
         FileManager::ensureDirectory("data");
         AppState app;
         g_app = &app;
@@ -589,14 +787,15 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int showCommand) {
         windowClass.lpfnWndProc = windowProcedure;
         windowClass.hInstance = instance;
         windowClass.hCursor = LoadCursor(NULL, IDC_ARROW);
-        windowClass.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+        windowClass.hbrBackground = g_backgroundBrush;
         windowClass.lpszClassName = "SecureShareMainWindow";
         if (!RegisterClassA(&windowClass)) {
             throw std::runtime_error("Could not register the application window.");
         }
         HWND hwnd = CreateWindowExA(0, windowClass.lpszClassName,
-            "Secure Share - Secure File Sharing", WS_OVERLAPPEDWINDOW,
-            CW_USEDEFAULT, CW_USEDEFAULT, 680, 720, NULL, NULL, instance, NULL);
+            "Secure Share - Secure File Sharing",
+            WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+            CW_USEDEFAULT, CW_USEDEFAULT, 980, 740, NULL, NULL, instance, NULL);
         if (hwnd == NULL) {
             throw std::runtime_error("Could not create the application window.");
         }
@@ -608,6 +807,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int showCommand) {
             TranslateMessage(&msg);
             DispatchMessageA(&msg);
         }
+        DeleteObject(g_surfaceBrush);
+        DeleteObject(g_backgroundBrush);
+        DeleteObject(g_titleFont);
+        DeleteObject(g_headingFont);
+        DeleteObject(g_font);
         return static_cast<int>(msg.wParam);
     } catch (const std::exception& exception) {
         MessageBoxA(NULL, exception.what(), "Secure Share startup error",

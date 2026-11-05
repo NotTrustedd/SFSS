@@ -1,8 +1,9 @@
 # Secure File Sharing and Access Control
 
-This is the **single final project**: a native Windows desktop GUI backed by
-C++17 authentication, Winsock peer networking, file handling, demonstration
-encryption, and transfer-history modules.
+This is the **single final project**: a simple Windows desktop app for sharing
+files directly between two computers over a local network. It uses C++17,
+Winsock TCP, local accounts, file handling, a session-key check, and transfer
+history.
 
 ## Requirements
 
@@ -24,6 +25,10 @@ mingw32-make
 .\SecureShare.exe
 ```
 
+The app executable is statically linked with the MinGW C++ runtime, so the
+other computer does not need MinGW installed. Keep the executable in a folder
+where the user can create files; the app stores its data beside the executable.
+
 Build and run the integration test:
 
 ```powershell
@@ -32,21 +37,29 @@ mingw32-make test
 
 ## Using two computers
 
-1. Copy the complete project folder to each Windows computer and build it
-   there, or copy the generated executable if its MinGW runtime dependencies
-   are available.
-2. Register a local account on each computer and log in using a distinct
-   listening TCP port.
-3. Allow the chosen listening port through Windows Firewall.
-4. Exchange the receiver's LAN IPv4 address and port manually. The network
-   must allow peer-to-peer connections; guest Wi-Fi/client isolation can block
-   them.
-5. Select the file, enter the peer information, and use the same shared key
-   at sender and receiver.
+1. Copy `SecureShare.exe` to a writable folder on each Windows 10/11 computer.
+   The computers should be on the same LAN. No MinGW install is needed to run
+   this statically linked executable.
+2. Start the app on both computers. Register a separate local account on each,
+   then log in. Accounts are local to each computer; account registration does
+   not synchronize over the network.
+3. Use a listening port on each computer (the default `54000` can be used on
+   both computers). Allow the app through Windows Firewall on a **Private**
+   network, or allow inbound TCP traffic on that port.
+4. On the receiving computer, share its LAN IPv4 address and listening port.
+   On the sending computer, enter that address, port, and the receiver's
+   username.
+5. Enter the same shared session key on both computers. Choose a file and
+   send it. On the receiving computer, select **Incoming requests**, verify
+   the request, then accept or reject it.
 
-Accounts and transfer history are stored under `data\`; downloaded files are
-written under `received\`. These paths are relative to the app's working
-directory.
+Find the LAN IPv4 address with `ipconfig` in Command Prompt. Guest Wi-Fi,
+client isolation, different VLANs, or firewall rules may block peer traffic.
+This app is designed for a trusted LAN demo, not Internet file sharing.
+
+The app creates `data\` and `received\` beside `SecureShare.exe`. Accounts and
+history are local; received files are saved in `received\`. Each computer
+maintains its own account and history files.
 
 ## Included features
 
@@ -56,7 +69,8 @@ directory.
 - Shared-key proof validation before acceptance
 - Transfer progress/cancellation, file selection, and collision-safe saving
 - Chronological history and search by username
-- Error/status reporting
+- Error/status reporting, with account, transfer, and history sections in the
+  GUI
 
 The integration test creates temporary accounts and a binary payload, checks
 login and invalid-password behavior, validates an invalid key, sends and
@@ -74,7 +88,6 @@ and verifies transfer-history records.
 ## Security and scope limitations
 
 This is a LAN college demonstration, not production-secure software. The
-current file cipher is XOR, the password hashing scheme is not a modern
-password KDF, and peers exchange IP/port and the shared key out-of-band. Use
-AES-GCM, a standard password KDF, and an authenticated peer/key-management
-design before handling sensitive files.
+file cipher is XOR and is **not secure encryption**. Password hashing is
+demonstration-grade, and peers exchange their IP/port and shared key out of
+band. Do not use this app for sensitive files or over an untrusted network.
