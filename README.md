@@ -1,23 +1,52 @@
-# Secure File Sharing and Access Control
+<div align="center">
 
-This is the **single final project**: a simple Windows desktop app for sharing
-files directly between two computers over a local network. It uses C++17,
-Winsock TCP, local accounts, file handling, a session-key check, and transfer
-history.
+<img src="assets/peer-sharing.png" alt="Two computers sharing files directly over a network" width="520">
 
-## Requirements
+# Secure File Sharing System (SFSS)
 
-- Windows 10/11
-- MinGW g++ with C++17 support
-- `mingw32-make`
+**Share files directly between trusted Windows PCs on a local network.**
 
-The GUI uses native Win32 controls because Qt is not installed in the current
-MinGW environment. This application is Windows-only; it is not a
-cross-platform Qt build.
+![C++17](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus&logoColor=white)
+![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4?logo=windows&logoColor=white)
+![Network](https://img.shields.io/badge/network-Winsock%20TCP-146C94)
 
-## Build and run
+</div>
 
-From PowerShell in this project folder:
+SFSS is a peer-to-peer desktop application built in C++17. Each logged-in
+instance listens for incoming file offers and can also send files to another
+peer. No central file-transfer server or account service is used.
+
+> **College demonstration project:** XOR file transformation and the included
+> password hashing are not production security. Use only with trusted peers
+> and non-sensitive files on a trusted LAN.
+
+## What it can do
+
+| Account and access | File transfer |
+| --- | --- |
+| Register, log in, and log out | Send directly over TCP |
+| Separate local account on each PC | Accept or reject incoming requests |
+| Verify a shared session key | Show progress and allow cancellation |
+| Check peer reachability | Save received files and record history |
+| Search and view transfer history | Detect disconnects and report errors |
+
+## Run it
+
+### Use the ready-to-run app
+
+1. Copy `SecureShare.exe` to a writable folder on each Windows 10/11 PC.
+2. Run it. The receiving PC does not need MinGW installed.
+3. Follow [the two-PC setup](#send-a-file-between-two-pcs) below.
+
+The app stores `data/` and `received/` beside its executable. Each computer has
+its own accounts and transfer history.
+
+### Build from source
+
+**Requirements:** Windows 10/11, MinGW g++ with C++17 support, `mingw32-make`,
+and `windres` (included with MinGW).
+
+Run these commands in PowerShell from the project folder:
 
 ```powershell
 mingw32-make clean
@@ -25,156 +54,92 @@ mingw32-make
 .\SecureShare.exe
 ```
 
-The app executable is statically linked with the MinGW C++ runtime, so the
-other computer does not need MinGW installed. Keep the executable in a folder
-where the user can create files; the app stores its data beside the executable.
-The application icon is embedded from `assets\secureshare.ico` during the
-build. After changing that icon, rebuild the app and copy the new
-`SecureShare.exe` to the other computer.
+The Windows app icon is built from `assets/secureshare.ico`. The app statically
+links the MinGW C++ runtime, so MinGW is not needed on the second PC.
 
-Build and run the integration test:
+Run the C++ integration test with:
 
 ```powershell
 mingw32-make test
 ```
 
-## Run a transfer between two Windows PCs
+## Send a file between two PCs
 
-The app communicates directly over TCP. Both PCs need to be on a network that
-allows devices to connect to each other. This walkthrough assumes one PC is the
-sender and the other is the receiver.
+Both computers must be on a network that permits devices to connect to each
+other. These steps assume one sender and one receiver.
 
-### 1. Copy and start the application
+1. **Start both apps.** Register a separate account on each PC, then log in.
+   Usernames allow letters, digits, `_`, and `-`; passwords must be at least
+   eight characters.
+2. **Set the listening port.** Use the default `54000` on both PCs. The same
+   port can be used because they are separate computers. Confirm each app is
+   online after login.
+3. **Find the receiver's IPv4 address.** On the receiver, open Command Prompt,
+   run `ipconfig`, and note the IPv4 address under the active Wi-Fi or Ethernet
+   adapter. Use this address on the sender—not `127.0.0.1`.
+4. **Allow inbound traffic on the receiver.** Permit Secure Share or inbound
+   TCP port `54000` through Windows Firewall for a trusted network profile.
+   Do not turn off the firewall or mark an untrusted network as Private.
+5. **Fill in the sender's fields:** the receiver's username, current IPv4
+   address, and listening port. Enter a shared session key of at least eight
+   characters, choose a file with **Browse...**, and click **Send file**.
+6. **Accept on the receiver.** Enter the exact same session key, click
+   **Incoming requests**, check the sender and file details, and choose **Yes**
+   to accept. Keep both apps open until the transfer finishes.
 
-1. Copy `SecureShare.exe` to a writable folder on each PC, for example
-   `C:\Users\YourName\Desktop\SecureShare\`. Do not put it in `Program Files`.
-   The receiver's `received\` folder and each PC's `data\` folder are created
-   beside the executable.
-2. Start `SecureShare.exe` on both PCs. The second PC does not need MinGW
-   installed.
-3. If Windows Firewall asks, allow the app on **Private networks only**, and
-   only when you trust the network.
+The receiver gets a success message with the saved path. Files are stored in
+`received/` beside the receiver's `SecureShare.exe`. Start with a small file;
+the current transfer limit is **64 MiB**.
 
-### 2. Create local accounts and start listening
+<details>
+<summary><strong>Connection and transfer troubleshooting</strong></summary>
 
-1. On each PC, choose a username and password, then click **Register**.
-   Usernames may contain letters, numbers, `_` and `-`; passwords must be at
-   least 8 characters.
-2. Click **Login** on both PCs. Leave **Listen port** set to `54000`, unless
-   that port is already in use. The listening port can be the same on two
-   different PCs.
-3. Confirm the app reports that each user is online and listening. Accounts
-   are stored separately on each PC; registration does not synchronize them.
-
-### 3. Find the receiver's network address
-
-On the receiver PC:
-
-1. Open Command Prompt (press Start, type `cmd`, and open **Command Prompt**).
-2. Run `ipconfig`.
-3. Under the active **Wi-Fi** or **Ethernet** adapter, note the **IPv4
-   Address**, such as `192.168.1.25`.
-
-Use the receiver's current LAN IPv4 address—not `127.0.0.1`. Do not use an
-address from an inactive adapter or a VPN.
-
-### 4. Allow the receiver through Windows Firewall
-
-The receiver must accept inbound TCP connections on its listening port
-(normally `54000`). In Windows Security, use **Firewall & network protection
-→ Allow an app through firewall** to allow Secure Share on a trusted **Private**
-network. If needed, create an inbound firewall rule for TCP port `54000` on
-the trusted network profile.
-
-Do not disable the firewall. Do not mark an untrusted public network as
-Private just to make the transfer work. If the network is identified as
-Public, a Private-only firewall rule will not apply; use only a policy
-appropriate for a network you trust. Guest Wi-Fi, client isolation, VPNs, or
-different network segments may prevent the PCs from connecting.
-
-### 5. Send and accept a file
-
-On the **sender PC**, while logged in:
-
-1. In **Receiver username**, enter the account name registered on the receiver.
-2. In **Peer IPv4 address**, enter the receiver's address from step 3.
-3. In **Listening port**, enter the port shown by the receiver (normally
-   `54000`).
-4. Choose a **Shared session key** of at least 8 characters. Tell the receiver
-   the exact key using a separate trusted method; it is case-sensitive and
-   spaces count.
-5. Click **Browse...**, select a small test file, then click **Send file**.
-
-On the **receiver PC**, while logged in:
-
-1. Enter exactly the same key in **Shared session key**.
-2. Click **Incoming requests**. A request appears only after the sender has
-   connected and sent it.
-3. Check the sender, filename, and size in the prompt. Choose **Yes** to
-   accept or **No** to reject.
-4. Keep both apps open until the transfer finishes. The receiver should see a
-   success message containing the saved-file path.
-
-The file is saved in `received\` beside the receiver's `SecureShare.exe`. For
-example, if the app is in
-`C:\Users\YourName\Desktop\SecureShare\SecureShare.exe`, look in
-`C:\Users\YourName\Desktop\SecureShare\received\`. Accounts and transfer
-history are also local to each PC.
-
-### Troubleshooting
-
-- **No incoming request:** The receiver only displays requests that have
-  already arrived. First confirm the sender's connection succeeds.
-- **Winsock error 10060 / connection timeout:** Check that the receiver is
-  logged in and listening, that the sender has the receiver's current IPv4
-  address and exact listening port, and that inbound TCP is allowed by the
-  receiver's firewall. Confirm the Wi-Fi allows devices to communicate.
-- **`TcpTestSucceeded : False`:** From PowerShell on the sender, test the
-  receiver's address and port:
+- **No incoming request:** The receiver only lists requests that have arrived.
+  Check that the sender can connect first.
+- **Winsock error 10060 / timeout:** Confirm the receiver is logged in, the
+  sender is using the receiver's current IPv4 address and exact listening
+  port, the firewall allows inbound TCP, and the Wi-Fi allows devices to
+  communicate.
+- **Check the connection from the sender:** In PowerShell, replace the example
+  IP with the receiver's actual IPv4 address:
   ```powershell
   Test-NetConnection 192.168.1.25 -Port 54000
   ```
-  Replace `192.168.1.25` with the receiver's actual IPv4 address and use its
-  actual listening port. A successful connection reports
-  `TcpTestSucceeded : True`. If it is false, the app's request cannot reach the
-  receiver yet.
-- **Session key did not match:** The request reached the receiver, but the
-  keys differ. Enter the exact same case-sensitive key on both PCs. The
-  current request remains pending so the receiver can try again.
-- **Port already in use:** Choose another unused port for that PC at login,
-  add a firewall rule for that port, and enter that same port on the sender.
+  `TcpTestSucceeded : True` means TCP connectivity works. `False` means the
+  request cannot reach the receiver yet.
+- **Session key did not match:** Enter the exact same case-sensitive key on
+  both PCs. The request remains pending so the receiver can try again.
+- **Port already in use:** Pick another port when logging in on that PC, allow
+  that TCP port through the firewall, and enter the same port on the sender.
+- **Still cannot connect:** Guest Wi-Fi, client isolation, VPNs, or different
+  network segments may block peer-to-peer traffic. This app is for a trusted
+  LAN demo, not Internet file sharing.
 
-Start with a small file. The current maximum transfer size is **64 MiB**. This
-application is for a trusted LAN demonstration, not Internet file sharing or
-sensitive data.
+</details>
 
-## Included features
+## How the code is organized
 
-- Registration, login, and logout
-- A listener per online peer, manual peer status checks
-- Direct TCP file transfer and incoming request accept/reject
-- Shared-key proof validation before acceptance
-- Transfer progress/cancellation, file selection, and collision-safe saving
-- Chronological history and search by username
-- Error/status reporting, with account, transfer, and history sections in the
-  GUI
+| Folder | Responsibility |
+| --- | --- |
+| `src/` and `include/` | C++ application, GUI, and module implementations/interfaces |
+| `src/auth/`, `include/auth/` | User accounts, registration, and authentication |
+| `src/network/`, `include/network/` | Winsock client/server and shared TCP protocol |
+| `src/security/`, `include/security/` | File handling, hashing, session proof, and demo cipher |
+| `src/transfer/`, `include/transfer/` | Transfer workflow and history |
+| `tests/` | C++ integration test for authentication and peer transfers |
+| `assets/`, `resources/` | App icon and Windows executable resource declaration |
+| `data/`, `received/` | Local runtime accounts/history and received files |
 
-The integration test creates temporary accounts and a binary payload, checks
-login and invalid-password behavior, validates an invalid key, sends and
-verifies a 180,000-byte file between local peers over TCP, exercises rejection,
-and verifies transfer-history records.
+## Test coverage
 
-## Architecture
+`tests/integration.cpp` checks registration and login, invalid passwords,
+session-key verification, an accepted 180,000-byte TCP transfer and byte
+integrity, rejected requests, and sender/receiver history entries. It runs both
+test peers locally; it does not replace testing across two physical PCs.
 
-- `include/` and `src/`: authentication, network protocol/server/client,
-  security/file handling, transfer orchestration, and the GUI entry point
-- `tests/integration.cpp`: local end-to-end transfer test
-- `data/`: runtime account and history files
-- `received/`: files received by this peer
+## Security limitations
 
-## Security and scope limitations
-
-This is a LAN college demonstration, not production-secure software. The
-file cipher is XOR and is **not secure encryption**. Password hashing is
-demonstration-grade, and peers exchange their IP/port and shared key out of
-band. Do not use this app for sensitive files or over an untrusted network.
+- The file cipher is XOR and is **not secure encryption**.
+- Password hashing is demonstration-grade, not a modern password KDF.
+- The shared key and peer address are exchanged out of band.
+- Do not use SFSS for sensitive files or over an untrusted network.
