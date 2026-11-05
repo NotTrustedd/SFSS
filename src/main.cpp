@@ -20,6 +20,7 @@ namespace {
 
 const UINT WM_APP_OPERATION_DONE = WM_APP + 1;
 const UINT WM_APP_TRANSFER_PROGRESS = WM_APP + 2;
+const int IDI_APP_ICON = 101;
 const int ID_USERNAME = 1000;
 const int ID_PASSWORD = 1001;
 const int ID_PORT = 1002;
@@ -783,13 +784,16 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int showCommand) {
         AppState app;
         g_app = &app;
 
-        WNDCLASSA windowClass = {};
+        WNDCLASSEXA windowClass = {};
+        windowClass.cbSize = sizeof(windowClass);
         windowClass.lpfnWndProc = windowProcedure;
         windowClass.hInstance = instance;
+        windowClass.hIcon = LoadIconA(instance, MAKEINTRESOURCEA(IDI_APP_ICON));
+        windowClass.hIconSm = windowClass.hIcon;
         windowClass.hCursor = LoadCursor(NULL, IDC_ARROW);
         windowClass.hbrBackground = g_backgroundBrush;
         windowClass.lpszClassName = "SecureShareMainWindow";
-        if (!RegisterClassA(&windowClass)) {
+        if (!RegisterClassExA(&windowClass)) {
             throw std::runtime_error("Could not register the application window.");
         }
         HWND hwnd = CreateWindowExA(0, windowClass.lpszClassName,
